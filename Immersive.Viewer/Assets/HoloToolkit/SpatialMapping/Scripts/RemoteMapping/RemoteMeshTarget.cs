@@ -10,6 +10,25 @@ using System.Net.Sockets;
 #endif
 using UnityEngine;
 
+#if UNITY_WSA && !UNITY_EDITOR
+using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.InteropServices.WindowsRuntime;
+using Windows.Foundation;
+using Windows.Foundation.Collections;
+using Windows.UI.Core;
+using Windows.UI.Xaml;
+using Windows.UI.Xaml.Controls;
+using Windows.UI.Xaml.Controls.Primitives;
+using Windows.UI.Xaml.Data;
+using Windows.UI.Xaml.Input;
+using Windows.UI.Xaml.Media;
+using Windows.UI.Xaml.Navigation;
+using Windows.Networking;
+using System.Diagnostics;
+using System.Collections.Concurrent;
+#endif
+
 namespace HoloToolkit.Unity.SpatialMapping
 {
     /// <summary>
@@ -25,6 +44,169 @@ namespace HoloToolkit.Unity.SpatialMapping
         [Tooltip("The connection port on the machine to use.")]
         public int ConnectionPort = 11000;
 
+        /// <summary>
+        /// Reads an int from the next 4 bytes of the supplied stream.
+        /// </summary>
+        /// <param name="stream">The stream to read the bytes from.</param>
+        /// <returns>An integer representing the bytes.</returns>
+        private int ReadInt(Stream stream)
+        {
+            // The bytes arrive in the wrong order, so swap them.
+            byte[] bytes = new byte[4];
+            stream.Read(bytes, 0, 4);
+            byte t = bytes[0];
+            bytes[0] = bytes[3];
+            bytes[3] = t;
+
+            t = bytes[1];
+            bytes[1] = bytes[2];
+            bytes[2] = t;
+
+            // Then bitconverter can read the int32.
+            return BitConverter.ToInt32(bytes, 0);
+        }
+
+#if UNITY_WSA && !UNITY_EDITOR //UNITY_EDITOR
+        /// <summary>
+        /// Listens for network connections over TCP in an UWP app
+        /// </summary> 
+        private Windows.Networking.Sockets.StreamSocketListener streamSocketListener;
+
+        /// <summary>
+        /// Buffers the received meshes to process and display
+        /// </summary>
+        private ConcurrentQueue<byte[]> ReceivedMeshes;
+
+        void Start()
+        {
+            ReceivedMeshes = new ConcurrentQueue<byte[]>();
+            StartServer();
+        }
+
+        // Update is called once per frame.
+        void Update()
+        {
+            //System.Diagnostics.Debug.WriteLine("Update - " + DateTime.Now.Ticks);
+            if (ReceivedMeshes.TryDequeue(out byte[] result))
+            {
+                // Pass the data to the mesh serializer. 
+                List<Mesh> meshes = new List<Mesh>(SimpleMeshSerializer.Deserialize(result));
+
+                if (meshes.Count > 0 && SpatialMappingManager.Instance.Source != this)
+                {
+                    // Use the network-based mapping source to receive meshes in the Unity editor.
+                    SpatialMappingManager.Instance.SetSpatialMappingSource(this);
+                    System.Diagnostics.Debug.WriteLine("Set the network-based mapping source.");
+                }
+
+                // For each mesh, create a GameObject to render it.
+                for (int index = 0; index < meshes.Count; index++)
+                {
+                    int meshID = SurfaceObjects.Count;
+
+                    SurfaceObject surface = CreateSurfaceObject(
+                        mesh: meshes[index],
+                        objectName: "Beamed-" + meshID,
+                        parentObject: transform,
+                        meshID: meshID
+                        );
+
+                    surface.Object.transform.parent = SpatialMappingManager.Instance.transform;
+
+                    AddSurfaceObject(surface);
+                    System.Diagnostics.Debug.WriteLine("Added object " + surface.Object.name);
+                }
+            }
+        }
+
+        private async void StartServer()
+        {
+            try
+            {
+                streamSocketListener = new Windows.Networking.Sockets.StreamSocketListener();
+
+                // The ConnectionReceived event is raised when connections are received.
+                streamSocketListener.ConnectionReceived += this.StreamSocketListener_ConnectionReceived;
+
+                // Start listening for incoming TCP connections on the specified port. You can specify any port that's not currently in use.
+                await streamSocketListener.BindServiceNameAsync(ConnectionPort.ToString());
+
+                System.Diagnostics.Debug.WriteLine("Listener started on port " + ConnectionPort);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine("Couldn't open socket listener.");
+            }
+        }
+
+        private async void StopServer()
+        {
+            if (streamSocketListener != null)
+            {
+                streamSocketListener.Dispose();
+                System.Diagnostics.Debug.WriteLine("Listener stopped.");
+            }
+        }
+
+        private async void StreamSocketListener_ConnectionReceived(Windows.Networking.Sockets.StreamSocketListener sender, Windows.Networking.Sockets.StreamSocketListenerConnectionReceivedEventArgs args)
+        {
+            using (var stream = args.Socket.InputStream.AsStreamForRead())
+            {
+                // TODO Make sure there is data in the stream.
+
+                // The first 4 bytes will be the size of the data containing the mesh(es).
+                int datasize = ReadInt(stream);
+
+                // Allocate a buffer to hold the data.  
+                byte[] dataBuffer = new byte[datasize];
+
+                // Read the data.
+                // The data can come in chunks. 
+                int readsize = 0;
+
+                while (readsize != datasize)
+                {
+                    readsize += stream.Read(dataBuffer, readsize, datasize - readsize);
+                }
+
+                System.Diagnostics.Debug.WriteLine("Received:" + datasize + "bytes");
+
+                ReceivedMeshes.Enqueue(dataBuffer);
+
+                //UnityEngine.WSA.Application.InvokeOnUIThread(new UnityEngine.WSA.AppCallbackItem(() =>
+                //{
+                //    // Pass the data to the mesh serializer. 
+                //    List<Mesh> meshes = new List<Mesh>(SimpleMeshSerializer.Deserialize(dataBuffer));
+
+                //    if (meshes.Count > 0)
+                //    {
+                //        // Use the network-based mapping source to receive meshes in the Unity editor.
+                //        SpatialMappingManager.Instance.SetSpatialMappingSource(this);
+                //    }
+
+                //    // For each mesh, create a GameObject to render it.
+                //    for (int index = 0; index < meshes.Count; index++)
+                //    {
+                //        int meshID = SurfaceObjects.Count;
+
+                //        SurfaceObject surface = CreateSurfaceObject(
+                //            mesh: meshes[index],
+                //            objectName: "Beamed-" + meshID,
+                //            parentObject: transform,
+                //            meshID: meshID
+                //            );
+
+                //        surface.Object.transform.parent = SpatialMappingManager.Instance.transform;
+
+                //        AddSurfaceObject(surface);
+                //    }
+
+                //}),false);
+
+            }
+        }
+#endif
+
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
         /// <summary>
         /// Listens for network connections over TCP.
@@ -36,10 +218,7 @@ namespace HoloToolkit.Unity.SpatialMapping
         /// </summary>
         private TcpClient networkClient;
 
-        /// <summary>
-        /// Tracks if a client is connected.
-        /// </summary>
-        private bool clientConnected;
+        private bool clientConnected = false;
 
         // Use this for initialization.
         private void Start()
@@ -121,28 +300,6 @@ namespace HoloToolkit.Unity.SpatialMapping
                     networkListener.BeginAcceptTcpClient(callback, this);
                 }
             }
-        }
-
-        /// <summary>
-        /// Reads an int from the next 4 bytes of the supplied stream.
-        /// </summary>
-        /// <param name="stream">The stream to read the bytes from.</param>
-        /// <returns>An integer representing the bytes.</returns>
-        private int ReadInt(Stream stream)
-        {
-            // The bytes arrive in the wrong order, so swap them.
-            byte[] bytes = new byte[4];
-            stream.Read(bytes, 0, 4);
-            byte t = bytes[0];
-            bytes[0] = bytes[3];
-            bytes[3] = t;
-
-            t = bytes[1];
-            bytes[1] = bytes[2];
-            bytes[2] = t;
-
-            // Then bitconverter can read the int32.
-            return BitConverter.ToInt32(bytes, 0);
         }
 
         /// <summary>
