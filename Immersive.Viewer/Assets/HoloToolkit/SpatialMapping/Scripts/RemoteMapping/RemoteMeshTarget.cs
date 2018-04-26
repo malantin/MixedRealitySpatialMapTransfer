@@ -4,28 +4,14 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using UnityEngine;
+
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using System.Net;
 using System.Net.Sockets;
 #endif
-using UnityEngine;
 
 #if UNITY_WSA && !UNITY_EDITOR
-using System.Collections.Generic;
-using System.Linq;
-using System.Runtime.InteropServices.WindowsRuntime;
-using Windows.Foundation;
-using Windows.Foundation.Collections;
-using Windows.UI.Core;
-using Windows.UI.Xaml;
-using Windows.UI.Xaml.Controls;
-using Windows.UI.Xaml.Controls.Primitives;
-using Windows.UI.Xaml.Data;
-using Windows.UI.Xaml.Input;
-using Windows.UI.Xaml.Media;
-using Windows.UI.Xaml.Navigation;
-using Windows.Networking;
-using System.Diagnostics;
 using System.Collections.Concurrent;
 #endif
 
@@ -66,7 +52,8 @@ namespace HoloToolkit.Unity.SpatialMapping
             return BitConverter.ToInt32(bytes, 0);
         }
 
-#if UNITY_WSA && !UNITY_EDITOR //UNITY_EDITOR
+#if UNITY_WSA && !UNITY_EDITOR
+
         /// <summary>
         /// Listens for network connections over TCP in an UWP app
         /// </summary> 
@@ -77,16 +64,19 @@ namespace HoloToolkit.Unity.SpatialMapping
         /// </summary>
         private ConcurrentQueue<byte[]> ReceivedMeshes;
 
+        // Use this for initialization.
         void Start()
         {
+            // Initiate the queue for storing the mesh data until the game objects are created
             ReceivedMeshes = new ConcurrentQueue<byte[]>();
+
+            // Start the server for receiving mesh data
             StartServer();
         }
 
         // Update is called once per frame.
         void Update()
         {
-            //System.Diagnostics.Debug.WriteLine("Update - " + DateTime.Now.Ticks);
             if (ReceivedMeshes.TryDequeue(out byte[] result))
             {
                 // Pass the data to the mesh serializer. 
@@ -119,6 +109,10 @@ namespace HoloToolkit.Unity.SpatialMapping
             }
         }
 
+
+        /// <summary>
+        /// Used to start the stream socket listener and attach the event handler for incoming connections
+        /// </summary>
         private async void StartServer()
         {
             try
@@ -139,6 +133,9 @@ namespace HoloToolkit.Unity.SpatialMapping
             }
         }
 
+        /// <summary>
+        /// Used to dispose of the stream socket listener
+        /// </summary>
         private async void StopServer()
         {
             if (streamSocketListener != null)
@@ -148,6 +145,11 @@ namespace HoloToolkit.Unity.SpatialMapping
             }
         }
 
+        /// <summary>
+        /// Event handler for handling incoming connections and save the mesh data
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="args"></param>
         private async void StreamSocketListener_ConnectionReceived(Windows.Networking.Sockets.StreamSocketListener sender, Windows.Networking.Sockets.StreamSocketListenerConnectionReceivedEventArgs args)
         {
             using (var stream = args.Socket.InputStream.AsStreamForRead())
@@ -172,37 +174,6 @@ namespace HoloToolkit.Unity.SpatialMapping
                 System.Diagnostics.Debug.WriteLine("Received:" + datasize + "bytes");
 
                 ReceivedMeshes.Enqueue(dataBuffer);
-
-                //UnityEngine.WSA.Application.InvokeOnUIThread(new UnityEngine.WSA.AppCallbackItem(() =>
-                //{
-                //    // Pass the data to the mesh serializer. 
-                //    List<Mesh> meshes = new List<Mesh>(SimpleMeshSerializer.Deserialize(dataBuffer));
-
-                //    if (meshes.Count > 0)
-                //    {
-                //        // Use the network-based mapping source to receive meshes in the Unity editor.
-                //        SpatialMappingManager.Instance.SetSpatialMappingSource(this);
-                //    }
-
-                //    // For each mesh, create a GameObject to render it.
-                //    for (int index = 0; index < meshes.Count; index++)
-                //    {
-                //        int meshID = SurfaceObjects.Count;
-
-                //        SurfaceObject surface = CreateSurfaceObject(
-                //            mesh: meshes[index],
-                //            objectName: "Beamed-" + meshID,
-                //            parentObject: transform,
-                //            meshID: meshID
-                //            );
-
-                //        surface.Object.transform.parent = SpatialMappingManager.Instance.transform;
-
-                //        AddSurfaceObject(surface);
-                //    }
-
-                //}),false);
-
             }
         }
 #endif
