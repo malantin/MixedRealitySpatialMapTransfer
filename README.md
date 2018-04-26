@@ -6,15 +6,13 @@ In order to run the solution:
 - Build the Hololens.Scanner and deploy to your HoloLens device
 - Launch the Hololens.Scanner on the HoloLens
 - Scan the room
-- Start the Immersive Mixed Reality App (Immersive.Viewer) with Play Mode in Unity on your PC
-- Make sure the Game View is in Focus
-- Press the Key for Network mesh loading on the PC (Default is N)
+- Build and deploy the Immersive Mixed Reality App (Immersive.Viewer) on your Windows Mixed Reality capable PC
 - Send the Mesh with the voice command "Send meshes" on your HoloLens
 - You can save the mesh using the S key on your PC and load the saved mesh using the L key
 
 When saving a mesh from Unity Editor, it will be located in a folder like this:
 
-"C:\Users\username\AppData\LocalLow\DefaultCompany\Immersive_Viewer"
+"C:\Users\username\AppData\Local\Packages\Immersive.Viewer_pzq3xp76mxafg\RoamingState\roombackup.room"
 
 ![MR Mesh Preview](./Images/ImmersivePreview.png)
 
